@@ -691,6 +691,8 @@ void mdss_dsi_ctrl_phy_reset(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_debug_bus_init(struct mdss_dsi_data *sdata);
 
 u32 mdss_dsi_panel_forced_tx_mode_get(struct mdss_panel_info *pinfo);
+void mdss_dsi_panel_forced_tx_mode_set(struct mdss_panel_info *pinfo,
+				bool enable);
 
 static inline const char *__mdss_dsi_pm_name(enum dsi_pm_type module)
 {
