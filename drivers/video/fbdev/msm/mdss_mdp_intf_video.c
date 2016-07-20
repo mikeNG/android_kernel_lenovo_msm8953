@@ -830,6 +830,7 @@ static int mdss_mdp_video_ctx_stop(struct mdss_mdp_ctl *ctl,
 	u32 frame_rate = 0;
 
 	mutex_lock(&ctl->offlock);
+	mutex_lock(&ctl->mfd->param_lock);
 	if (ctx->timegen_en) {
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_BLANK, NULL,
 			CTL_INTF_EVENT_FLAG_DEFAULT);
@@ -864,6 +865,7 @@ static int mdss_mdp_video_ctx_stop(struct mdss_mdp_ctl *ctl,
 
 	ctx->ref_cnt--;
 end:
+	mutex_unlock(&ctl->mfd->param_lock);
 	mutex_unlock(&ctl->offlock);
 	return rc;
 }
