@@ -29,6 +29,9 @@
 #include <sound/jack.h>
 #include "wcd-mbhc-legacy.h"
 #include "wcd-mbhc-v2.h"
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+#include "wcd-mbhc-v2-api.h"
+#endif
 
 static int det_extn_cable_en;
 module_param(det_extn_cable_en, int, 0664);
@@ -321,6 +324,10 @@ static void wcd_enable_mbhc_supply(struct wcd_mbhc *mbhc,
 			}
 		} else if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		} else if (plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP) {
+			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+#endif
 		} else {
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_NONE);
 		}
@@ -452,6 +459,9 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	int rc, spl_hs_count = 0;
 	int cross_conn;
 	int try = 0;
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	int apple_detect_count = 0;
+#endif
 
 	pr_debug("%s: enter\n", __func__);
 
@@ -650,6 +660,11 @@ correct_plug_type:
 			pr_debug("%s: cable is extension cable\n", __func__);
 			plug_type = MBHC_PLUG_TYPE_HIGH_HPH;
 			wrk_complete = true;
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+			if (apple_detect_count == 5)
+				break;
+			++apple_detect_count;
+#endif
 		} else {
 			pr_debug("%s: cable might be headset: %d\n", __func__,
 					plug_type);
@@ -709,11 +724,37 @@ correct_plug_type:
 
 	if (plug_type == MBHC_PLUG_TYPE_HIGH_HPH &&
 		(!det_extn_cable_en)) {
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		// it will report as selfie stick, althouth type is GND_MIC_SWAP
+		// in the wcd_mbhc_find_plug_and_report, impedance will be read
+		// to judge if it is a selfie stick
+		wcd_mbhc_find_plug_and_report(mbhc,
+				MBHC_PLUG_TYPE_GND_MIC_SWAP);
+#endif
 		if (wcd_is_special_headset(mbhc)) {
 			pr_debug("%s: Special headset found %d\n",
 					__func__, plug_type);
 			plug_type = MBHC_PLUG_TYPE_HEADSET;
 			goto report;
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		} else {
+			if (mbhc->impedance_detect) {
+				int impe;
+				if (mbhc->impedance_detect &&
+					mbhc->mbhc_cb->compute_impedance &&
+					(mbhc->mbhc_cfg->linein_th != 0))
+					mbhc->mbhc_cb->compute_impedance(mbhc,
+						&mbhc->zl, &mbhc->zr);
+					impe = wcd_mbhc_get_impedance(mbhc,
+						&mbhc->zl, &mbhc->zr);
+					if (impe == 1) {
+						pr_debug("%s: swap headset found %d\n",
+							__func__, plug_type);
+						plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;
+						goto report;
+					}
+			}
+#endif
 		}
 	}
 

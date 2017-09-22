@@ -515,6 +515,12 @@ int wcd_mbhc_get_impedance(struct wcd_mbhc *mbhc, uint32_t *zl,
 	*zr = mbhc->zr;
 
 	if (*zl && *zr)
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		if (*zl > 20000 && *zr > 20000) {
+			pr_debug("%s headset type is selfie stick\n", __func__);
+			return 1;
+		} else
+#endif
 		return 0;
 	else
 		return -EINVAL;
@@ -796,7 +802,24 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADPHONE);
 		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
 			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADSET);
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		if (mbhc->impedance_detect) {
+			int impe;
+			if (mbhc->impedance_detect &&
+					mbhc->mbhc_cb->compute_impedance &&
+					(mbhc->mbhc_cfg->linein_th != 0))
+				mbhc->mbhc_cb->compute_impedance(mbhc,
+						&mbhc->zl, &mbhc->zr);
+			impe = wcd_mbhc_get_impedance(mbhc,
+					&mbhc->zl, &mbhc->zr);
+			if (impe)
+				wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+			else
+				wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+		}
+#else
 		wcd_mbhc_report_plug(mbhc, 1, SND_JACK_UNSUPPORTED);
+#endif
 	} else if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
 		if (mbhc->mbhc_cfg->enable_anc_mic_detect &&
 		    mbhc->mbhc_fn->wcd_mbhc_detect_anc_plug_type)
@@ -879,6 +902,11 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 
 	if ((mbhc->current_plug == MBHC_PLUG_TYPE_NONE) &&
 	    detection_type) {
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		/* delay detection for debounce */
+		msleep(500);
+#endif
+
 		/* Make sure MASTER_BIAS_CTL is enabled */
 		mbhc->mbhc_cb->mbhc_bias(codec, true);
 
@@ -1956,6 +1984,26 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_codec *codec,
 				__func__);
 			return ret;
 		}
+
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+				       SND_JACK_BTN_1,
+				       KEY_VOLUMEUP);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-1\n",
+				__func__);
+			return ret;
+		}
+
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+				       SND_JACK_BTN_2,
+				       KEY_VOLUMEDOWN);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-2\n",
+				__func__);
+			return ret;
+		}
+#endif
 
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd_mbhc_fw_read);
