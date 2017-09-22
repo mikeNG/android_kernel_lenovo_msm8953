@@ -89,6 +89,9 @@ struct msm_asoc_mach_data {
 	struct device_node *dmic_gpio_p; /* used by pinctrl API */
 	struct snd_soc_codec *codec;
 	struct snd_info_entry *codec_root;
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	struct regulator *vdd;
+#endif
 };
 
 #endif/*__MSM8953_H*/
