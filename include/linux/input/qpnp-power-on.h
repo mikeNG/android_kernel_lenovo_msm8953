@@ -67,6 +67,7 @@ enum pon_restart_reason {
 
 #ifdef CONFIG_MACH_LENOVO_KUNTAO
 #define RESET_EXTRA_REBOOT_BL_REASON	BIT(2)
+#define RESET_EXTRA_LAST_REBOOT_REASON	BIT(4)
 #endif
 
 #ifdef CONFIG_INPUT_QPNP_POWER_ON
