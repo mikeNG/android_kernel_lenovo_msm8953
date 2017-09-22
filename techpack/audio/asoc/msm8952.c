@@ -32,6 +32,9 @@
 #include "msm8952.h"
 
 #define DRV_NAME "msm8952-asoc-wcd"
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+#define LPASS_CSR_GP_IO_MUX_QUI_CTL  0xc052000
+#endif
 
 #define MSM_INT_DIGITAL_CODEC "msm-dig-codec"
 #define PMIC_INT_ANALOG_CODEC "analog-codec"
@@ -61,7 +64,11 @@ static int mi2s_rx_bits_per_sample = 16;
 static int mi2s_rx_sample_rate = SAMPLING_RATE_48KHZ;
 
 static atomic_t quat_mi2s_clk_ref;
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+atomic_t quin_mi2s_clk_ref;
+#else
 static atomic_t quin_mi2s_clk_ref;
+#endif
 static atomic_t auxpcm_mi2s_clk_ref;
 static struct snd_info_entry *codec_root;
 
@@ -72,6 +79,9 @@ static int msm8952_mclk_event(struct snd_soc_dapm_widget *w,
 			      struct snd_kcontrol *kcontrol, int event);
 static int msm8952_wsa_switch_event(struct snd_soc_dapm_widget *w,
 			      struct snd_kcontrol *kcontrol, int event);
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+extern int msm8x16_quin_mi2s_clocks(bool enable);
+#endif
 
 /*
  * Android L spec
@@ -86,9 +96,15 @@ static struct wcd_mbhc_config mbhc_cfg = {
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = false,
 	.key_code[0] = KEY_MEDIA,
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	.key_code[1] = KEY_VOLUMEUP,
+	.key_code[2] = KEY_VOLUMEDOWN,
+	.key_code[3] = KEY_VOICECOMMAND,
+#else
 	.key_code[1] = KEY_VOICECOMMAND,
 	.key_code[2] = KEY_VOLUMEUP,
 	.key_code[3] = KEY_VOLUMEDOWN,
+#endif
 	.key_code[4] = 0,
 	.key_code[5] = 0,
 	.key_code[6] = 0,
@@ -121,7 +137,11 @@ static struct afe_clk_set mi2s_rx_clk = {
 static struct afe_clk_set wsa_ana_clk = {
 	AFE_API_VERSION_I2S_CONFIG,
 	Q6AFE_LPASS_CLK_ID_MCLK_1,
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	Q6AFE_LPASS_OSR_CLK_12_P288_MHZ,
+#else
 	Q6AFE_LPASS_OSR_CLK_9_P600_MHZ,
+#endif
 	Q6AFE_LPASS_CLK_ATTRIBUTE_COUPLE_NO,
 	Q6AFE_LPASS_CLK_ROOT_DEFAULT,
 	0,
@@ -654,6 +674,11 @@ static uint32_t get_mi2s_rx_clk_val(int port_id)
 	 *  channel count is used as 2
 	 */
 	if (is_mi2s_rx_port(port_id))
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		if (port_id == AFE_PORT_ID_QUINARY_MI2S_RX)
+			clk_val = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+		else
+#endif
 		clk_val = (mi2s_rx_sample_rate * mi2s_rx_bits_per_sample * 2);
 
 	pr_debug("%s: MI2S Rx bit clock value: 0x%0x\n", __func__, clk_val);
@@ -1371,23 +1396,27 @@ static int msm_quat_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		return -EINVAL;
 	}
 
-	if (pdata->vaddr_gpio_mux_mic_ctl) {
-		val = ioread32(pdata->vaddr_gpio_mux_mic_ctl);
-		val = val | 0x02020002;
-		iowrite32(val, pdata->vaddr_gpio_mux_mic_ctl);
-	}
-	ret = msm_mi2s_sclk_ctl(substream, true);
-	if (ret < 0) {
-		pr_err("failed to enable sclk\n");
-		return ret;
-	}
-	if (pdata->mi2s_gpio_p[QUAT_MI2S]) {
-		ret =  msm_cdc_pinctrl_select_active_state(
-			pdata->mi2s_gpio_p[QUAT_MI2S]);
-		if (ret < 0) {
-			pr_err("failed to enable codec gpios\n");
-			goto err;
+	if ((pdata->ext_pa & QUAT_MI2S_ID) == QUAT_MI2S_ID) {
+		if (pdata->vaddr_gpio_mux_mic_ctl) {
+			val = ioread32(pdata->vaddr_gpio_mux_mic_ctl);
+			val = val | 0x02020002;
+			iowrite32(val, pdata->vaddr_gpio_mux_mic_ctl);
 		}
+		ret = msm_mi2s_sclk_ctl(substream, true);
+		if (ret < 0) {
+			pr_err("failed to enable sclk\n");
+			return ret;
+		}
+		if (pdata->mi2s_gpio_p[QUAT_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_active_state(
+				pdata->mi2s_gpio_p[QUAT_MI2S]);
+			if (ret < 0) {
+				pr_err("failed to enable codec gpios\n");
+				goto err;
+			}
+		}
+	} else {
+			pr_err("%s: error codec type\n", __func__);
 	}
 	if (atomic_inc_return(&quat_mi2s_clk_ref) == 1) {
 		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_CBS_CFS);
@@ -1412,21 +1441,98 @@ static void msm_quat_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 				substream->name, substream->stream);
-	ret = msm_mi2s_sclk_ctl(substream, false);
-	if (ret < 0)
-		pr_err("%s:clock disable failed\n", __func__);
-	if (atomic_read(&quat_mi2s_clk_ref) > 0)
-		atomic_dec(&quat_mi2s_clk_ref);
-	if (pdata->mi2s_gpio_p[QUAT_MI2S]) {
-		ret =  msm_cdc_pinctrl_select_sleep_state(
-			pdata->mi2s_gpio_p[QUAT_MI2S]);
-		if (ret < 0) {
-			pr_err("%s: gpio set cannot be de-activated %sd",
-					__func__, "quat_i2s");
-			return;
+	if ((pdata->ext_pa & QUAT_MI2S_ID) == QUAT_MI2S_ID) {
+		ret = msm_mi2s_sclk_ctl(substream, false);
+		if (ret < 0)
+			pr_err("%s:clock disable failed\n", __func__);
+		if (atomic_read(&quat_mi2s_clk_ref) > 0)
+			atomic_dec(&quat_mi2s_clk_ref);
+		if (pdata->mi2s_gpio_p[QUAT_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_sleep_state(
+				pdata->mi2s_gpio_p[QUAT_MI2S]);
+			if (ret < 0) {
+				pr_err("%s: gpio set cannot be de-activated %sd",
+						__func__, "quat_i2s");
+				return;
+			}
 		}
 	}
 }
+
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+static int msm8x16_quin_mi2s_clk_int_codec_mux(void)
+{
+	int ret = 0;
+	int val = 0;
+	void __iomem *vaddr = NULL;
+
+	vaddr = ioremap(LPASS_CSR_GP_IO_MUX_QUI_CTL , 4);
+	if (!vaddr) {
+		pr_err("%s ioremap failure for addr %x",
+				__func__, LPASS_CSR_GP_IO_MUX_QUI_CTL);
+		return -ENOMEM;
+	}
+
+	/* enable QUIN MI2S interface to TLMM GPIO */
+	val = ioread32(vaddr);
+	val = val | 0x00000001;
+
+	iowrite32(val, vaddr);
+	iounmap(vaddr);
+	return ret;
+}
+
+int msm8x16_quin_mi2s_clk_ctl(bool enable)
+{
+	int ret = 0;
+
+	if (enable) {
+		ret = msm8x16_quin_mi2s_clk_int_codec_mux();
+		if (ret < 0) {
+			pr_err("%s: msm8x16_quat_mi2s_clk_int_codec_mux failed\n",
+					__func__);
+			return ret;
+		}
+		mi2s_rx_clk.clk_freq_in_hz = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+		mi2s_rx_clk.enable = enable;
+		mi2s_rx_clk.clk_id =
+				msm8952_get_clk_id(AFE_PORT_ID_QUINARY_MI2S_RX);
+
+		ret = afe_set_lpass_clock_v2(AFE_PORT_ID_QUINARY_MI2S_RX,
+				&mi2s_rx_clk);
+		if (ret < 0) {
+			pr_err("%s: afe_set_lpass_clock failed\n", __func__);
+			return ret;
+		}
+
+		ret = msm_gpioset_activate(CLIENT_WCD_INT, "quin_i2s");
+		if (ret < 0)
+			pr_err("failed to enable codec gpios\n");
+
+		msm8x16_quin_mi2s_clocks(enable);
+	} else {
+		msm8x16_quin_mi2s_clocks(enable);
+		msleep(100);
+		mi2s_rx_clk.enable = enable;
+		mi2s_rx_clk.clk_id =
+				msm8952_get_clk_id(AFE_PORT_ID_QUINARY_MI2S_RX);
+
+		ret = afe_set_lpass_clock_v2(AFE_PORT_ID_QUINARY_MI2S_RX,
+				&mi2s_rx_clk);
+		if (ret < 0) {
+			pr_err("%s: afe_set_lpass_clock rx failed\n", __func__);
+			return ret;
+		}
+
+		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "quin_i2s");
+		if (ret < 0)
+			pr_err("%s: gpio set cannot be de-activated %sd",
+					__func__, "quin_i2s");
+	}
+	return ret;
+}
+EXPORT_SYMBOL(msm8x16_quin_mi2s_clk_ctl);
+#endif
 
 static int msm_quin_mi2s_snd_startup(struct snd_pcm_substream *substream)
 {
@@ -1445,27 +1551,27 @@ static int msm_quin_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		return -EINVAL;
 	}
 
-	if (pdata->vaddr_gpio_mux_quin_ctl) {
-		val = ioread32(pdata->vaddr_gpio_mux_quin_ctl);
-		val = val | 0x00000001;
-		iowrite32(val, pdata->vaddr_gpio_mux_quin_ctl);
-	} else {
-		return -EINVAL;
-	}
-	ret = msm_mi2s_sclk_ctl(substream, true);
-	if (ret < 0) {
-		pr_err("failed to enable sclk\n");
-		return ret;
-	}
-	if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
-		ret =  msm_cdc_pinctrl_select_active_state(
-			pdata->mi2s_gpio_p[QUIN_MI2S]);
-		if (ret < 0) {
-			pr_err("failed to enable codec gpios\n");
-			goto err;
-		}
-	}
 	if (atomic_inc_return(&quin_mi2s_clk_ref) == 1) {
+		if (pdata->vaddr_gpio_mux_quin_ctl) {
+			val = ioread32(pdata->vaddr_gpio_mux_quin_ctl);
+			val = val | 0x00000001;
+			iowrite32(val, pdata->vaddr_gpio_mux_quin_ctl);
+		} else {
+			return -EINVAL;
+		}
+		ret = msm_mi2s_sclk_ctl(substream, true);
+		if (ret < 0) {
+			pr_err("failed to enable sclk\n");
+			return ret;
+		}
+		if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_active_state(
+				pdata->mi2s_gpio_p[QUIN_MI2S]);
+			if (ret < 0) {
+				pr_err("failed to enable codec gpios\n");
+				goto err;
+			}
+		}
 		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_CBS_CFS);
 		if (ret < 0)
 			pr_err("%s: set fmt cpu dai failed\n", __func__);
@@ -1488,18 +1594,18 @@ static void msm_quin_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 				substream->name, substream->stream);
-	ret = msm_mi2s_sclk_ctl(substream, false);
-	if (ret < 0)
-		pr_err("%s:clock disable failed\n", __func__);
-	if (atomic_read(&quin_mi2s_clk_ref) > 0)
-		atomic_dec(&quin_mi2s_clk_ref);
-	if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
-		ret =  msm_cdc_pinctrl_select_sleep_state(
-			pdata->mi2s_gpio_p[QUIN_MI2S]);
-		if (ret < 0) {
-			pr_err("%s: gpio set cannot be de-activated %sd",
-					__func__, "quin_i2s");
-			return;
+	if ((atomic_dec_return(&quin_mi2s_clk_ref) == 0) && ((pdata->ext_pa & QUIN_MI2S_ID) == QUIN_MI2S_ID)) {
+		ret = msm_mi2s_sclk_ctl(substream, false);
+		if (ret < 0)
+			pr_err("%s:clock disable failed\n", __func__);
+		if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_sleep_state(
+				pdata->mi2s_gpio_p[QUIN_MI2S]);
+			if (ret < 0) {
+				pr_err("%s: gpio set cannot be de-activated %sd",
+						__func__, "quin_i2s");
+				return;
+			}
 		}
 	}
 }
@@ -1516,7 +1622,11 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 		return NULL;
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(msm8952_wcd_cal)->X) = (Y))
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	S(v_hs_max, 1700);
+#else
 	S(v_hs_max, 1500);
+#endif
 #undef S
 #define S(X, Y) ((WCD_MBHC_CAL_BTN_DET_PTR(msm8952_wcd_cal)->X) = (Y))
 	S(num_btn, WCD_MBHC_DEF_BUTTONS);
@@ -1539,6 +1649,18 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	 * 210-290 == Button 2
 	 * 360-680 == Button 3
 	 */
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+	btn_low[0] = 100;
+	btn_high[0] = 100;
+	btn_low[1] = 200;
+	btn_high[1] = 200;
+	btn_low[2] = 450;
+	btn_high[2] = 450;
+	btn_low[3] = 450;
+	btn_high[3] = 450;
+	btn_low[4] = 450;
+	btn_high[4] = 450;
+#else
 	btn_low[0] = 75;
 	btn_high[0] = 75;
 	btn_low[1] = 150;
@@ -1549,6 +1671,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	btn_high[3] = 450;
 	btn_low[4] = 500;
 	btn_high[4] = 500;
+#endif
 
 	return msm8952_wcd_cal;
 }
@@ -2600,8 +2723,13 @@ static struct snd_soc_dai_link msm8952_dai[] = {
 		.stream_name = "Quinary MI2S Capture",
 		.cpu_dai_name = "msm-dai-q6-mi2s.4",
 		.platform_name = "msm-pcm-routing",
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		.codec_dai_name = "msm-stub-tx",
+		.codec_name = "msm-stub-codec.1",
+#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
+#endif
 		.no_pcm = 1,
 		.dpcm_capture = 1,
 		.id = MSM_BACKEND_DAI_QUINARY_MI2S_TX,
@@ -2633,8 +2761,13 @@ static struct snd_soc_dai_link msm8952_quin_dai_link[] = {
 		.stream_name = "Quinary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.4",
 		.platform_name = "msm-pcm-routing",
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		.codec_dai_name = "msm-stub-rx",
+		.codec_name = "msm-stub-codec.1",
+#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
+#endif
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.id = MSM_BACKEND_DAI_QUINARY_MI2S_RX,
