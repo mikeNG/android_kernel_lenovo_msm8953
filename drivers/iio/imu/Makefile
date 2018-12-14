@@ -18,5 +18,6 @@ obj-y += inv_mpu/
 obj-y += st_asm330lhh/
 obj-y += inv_mpu6050/
 obj-y += inv_icm20602/
+obj-y += st_lsm6ds3/
 
 obj-$(CONFIG_KMX61) += kmx61.o
