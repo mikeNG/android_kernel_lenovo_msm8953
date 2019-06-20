@@ -11,14 +11,30 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
+&spmi_bus {
+	qcom,pm8953@0 {
+		qcom,power-on@800 {
+			/delete-property/ qcom,store-hard-reset-reason;
+			qcom,pon_1 {
+				qcom,support-reset = <1>;
+				qcom,s1-timer = <6270>;
+				qcom,s2-timer = <2000>;
+				qcom,s2-type = <7>;
+			};
+		};
 
-#include "msm8953.dtsi"
-#include "pmi8950.dtsi"
-#include "msm8953-pmi8950.dtsi"
-#include "kuntao/msm8953-mtp-kuntao.dtsi"
+		pm8953_vadc: vadc@3100 {
+			chan@11 {
+				label = "chg_therm";
+			};
 
-/ {
-	model = "Kuntao p0";
-	qcom,board-id = <0x41 0x80a0>, <0x41 0x80b0>, <0x41 0x81b0>, <0x41 0x82b0>;
+			chan@13 {
+				label = "msm_therm";
+			};
+		};
+
+		pm8953_rtc: qcom,pm8953_rtc {
+			qcom,qpnp-rtc-alarm-pwrup = <1>;
+		};
+	};
 };

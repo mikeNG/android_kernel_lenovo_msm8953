@@ -11,8 +11,6 @@
  * GNU General Public License for more details.
  */
 
-#include "../msm8953-pinctrl.dtsi"
-
 &soc {
 	tlmm: pinctrl@1000000 {
 		/delete-node/ cam_sensor_front_default;
@@ -394,6 +392,28 @@
 					pins = "gpio62";
 					drive-strength = <8>;
 					bias-disable;
+				};
+			};
+		};
+
+		pmx_mdss {
+			mdss_dsi_active: mdss_dsi_active {
+				mux {
+					pins = "gpio61";
+				};
+
+				config {
+					pins = "gpio61";
+				};
+			};
+
+			mdss_dsi_suspend: mdss_dsi_suspend {
+				mux {
+					pins = "gpio61";
+				};
+
+				config {
+					pins = "gpio61";
 				};
 			};
 		};
