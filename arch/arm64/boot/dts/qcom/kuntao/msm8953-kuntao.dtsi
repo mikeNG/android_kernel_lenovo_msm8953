@@ -642,7 +642,7 @@
 			qcom,loop-ea-gm = <1>;
 			qcom,vref-psm-mv = <550>;
 			qcom,ovp-mv = <31000>;
-			qcom,enable-amoled-pulse-skipping;
+			qcom,lcd-psm-ctrl;
 		};
 	};
 
