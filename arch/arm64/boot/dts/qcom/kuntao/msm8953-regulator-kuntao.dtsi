@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,10 +11,12 @@
  * GNU General Public License for more details.
  */
 
-&int_codec {
-	qcom,cdc-us-euro-gpios = <&tlmm 50 0>;
-	qcom,msm-ext-pa = "quinary";
-	qcom,msm-mbhc-hphl-swh = <1>;
-	qcom,msm-hs-micbias-type = "external";
-	qcom,msm-micbias2-ext-cap;
+&rpm_bus {
+	rpm-regulator-ldoa10 {
+		pm8953_l10: regulator-l10 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
+		};
+	};
 };
