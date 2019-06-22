@@ -3407,8 +3407,7 @@ err_free_ps_input_device:
 /*----------------------------------------------------------------------------*/
 
 /*----------------------------------------------------------------------------*/
-#ifdef CONFIG_SUSPEND
-static int epl_sensor_suspend(struct i2c_client *client, pm_message_t mesg)
+static int epl_sensor_suspend(struct device *dev)
 {
     struct epl_sensor_priv *epld = epl_sensor_obj;
 
@@ -3483,7 +3482,7 @@ static void epl_sensor_early_suspend(struct early_suspend *h)
 }
 #endif
 
-static int epl_sensor_resume(struct i2c_client *client)
+static int epl_sensor_resume(struct device *dev)
 {
     struct epl_sensor_priv *epld = epl_sensor_obj;
     LOG_FUN();
@@ -3551,7 +3550,6 @@ static void epl_sensor_late_resume(struct early_suspend *h)
 }
 #endif
 
-#endif
 /*----------------------------------------------------------------------------*/
 static int als_intr_update_table(struct epl_sensor_priv *epld)
 {
@@ -3960,6 +3958,11 @@ static struct of_device_id epl_match_table[] = {
 
 /*----------------------------------------------------------------------------*/
 
+static const struct dev_pm_ops epl_sensor_pm_ops = {
+    .suspend = epl_sensor_suspend,
+    .resume = epl_sensor_resume,
+};
+
 /*----------------------------------------------------------------------------*/
 static struct i2c_driver epl_sensor_driver =
 {
@@ -3972,11 +3975,8 @@ static struct i2c_driver epl_sensor_driver =
 #ifdef CONFIG_OF
         .of_match_table =epl_match_table,
 #endif
+        .pm = &epl_sensor_pm_ops,
     },
-#ifdef CONFIG_SUSPEND
-    .suspend = epl_sensor_suspend,
-    .resume = epl_sensor_resume,
-#endif
 };
 
 static int __init epl_sensor_init(void)
