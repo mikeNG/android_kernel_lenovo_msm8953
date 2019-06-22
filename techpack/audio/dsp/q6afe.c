@@ -1607,13 +1607,13 @@ int msm8x16_quin_mi2s_clocks(bool enable)
 		port_config.i2s.data_format = 0;
 		port_config.i2s.reserved = 0;
 		rc = afe_port_start(port_id, &port_config, 48000);
-		if (IS_ERR_VALUE(rc)) {
+		if (rc < 0) {
 			pr_err("fail to open AFE port\n");
 			return -EINVAL;
 		}
 	} else {
 		rc = afe_close(port_id);
-		if (IS_ERR_VALUE(rc)) {
+		if (rc < 0) {
 			pr_err("fail to close AFE port\n");
 			return -EINVAL;
 		}
