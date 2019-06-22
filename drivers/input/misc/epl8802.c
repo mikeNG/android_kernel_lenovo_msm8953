@@ -35,7 +35,6 @@
 //#include <asm/mach-types.h>
 //#include <asm/setup.h>
 #include <uapi/asm/setup.h>
-#include <linux/wakelock.h>
 #include <linux/jiffies.h>
 #include <linux/epl8802.h>
 #include <linux/regulator/consumer.h>
@@ -222,7 +221,7 @@ static struct platform_device *sensor_dev;
 struct epl_sensor_priv *epl_sensor_obj;
 static epl_optical_sensor epl_sensor;
 static epl_raw_data	gRawData;
-static struct wake_lock ps_lock;
+static struct wakeup_source ps_lock;
 static struct mutex sensor_mutex;
 
 /*lenovo-sw caoyi add for LDO control 20160301 begin*/
@@ -1265,7 +1264,6 @@ void epl_sensor_enable_ps(int enable)
 	if (epld->enable_pflag != enable) {
 		epld->enable_pflag = enable;
 		if (enable) {
-			/*wake_lock(&ps_lock);*/
 #if ESD_PATCH
             esd_flag = true;
             write_global_variable(epld->client);
@@ -1277,8 +1275,6 @@ void epl_sensor_enable_ps(int enable)
 #if PS_DYN_K_ONE
 			ps_dyn_flag = true;
 #endif
-		} else {
-			/*wake_unlock(&ps_lock);*/
 		}
 		epl_sensor_fast_update(epld->client);
 		epl_sensor_update_mode(epld->client);
@@ -1853,7 +1849,7 @@ static void epl_sensor_eint_work(struct work_struct *work)
 			set_psensor_intr_threshold(ps_thd_5cm, ps_thd_3cm);
 		}
 		if(enable_ps) {
-			wake_lock_timeout(&ps_lock, 2*HZ);
+			__pm_wakeup_event(&ps_lock, 2*HZ);
 			epl_sensor_report_ps_status();
 		}
 		/*PS unlock interrupt pin and restart chip*/
@@ -3854,7 +3850,7 @@ static int epl_sensor_probe(struct i2c_client *client,const struct i2c_device_id
 #endif
 
 #endif
-    wake_lock_init(&ps_lock, WAKE_LOCK_SUSPEND, "ps wakelock");
+    wakeup_source_init(&ps_lock, "ps wakelock");
 #if ATTR_RANGE_PATH
 	kernel_kobj_dev = kobject_create_and_add("range", kernel_kobj);
 
@@ -3920,6 +3916,7 @@ static int epl_sensor_remove(struct i2c_client *client)
     struct epl_sensor_priv *epld = i2c_get_clientdata(client);
 
     dev_dbg(&client->dev, "%s: enter.\n", __func__);
+    wakeup_source_trash(&ps_lock);
 #if defined(CONFIG_HAS_EARLYSUSPEND)
     unregister_early_suspend(&epld->early_suspend);
 #endif
