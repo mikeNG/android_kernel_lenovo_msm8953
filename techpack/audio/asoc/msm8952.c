@@ -1483,12 +1483,10 @@ static int msm8x16_quin_mi2s_clk_int_codec_mux(void)
 	return ret;
 }
 
-int msm8x16_quin_mi2s_clk_ctl(bool enable)
+int msm8x16_quin_mi2s_clk_ctl(struct snd_soc_codec *codec, bool enable)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_card *card = rtd->card;
-	struct msm_asoc_mach_data *pdata =
-			snd_soc_card_get_drvdata(card);
+	struct snd_soc_card *card = codec->component.card;
+	struct msm_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
 	int ret = 0;
 
 	if (enable) {
