@@ -673,13 +673,14 @@ static uint32_t get_mi2s_rx_clk_val(int port_id)
 	 *  Derive clock value based on sample rate, bits per sample and
 	 *  channel count is used as 2
 	 */
-	if (is_mi2s_rx_port(port_id))
+	if (is_mi2s_rx_port(port_id)) {
 #ifdef CONFIG_MACH_LENOVO_KUNTAO
 		if (port_id == AFE_PORT_ID_QUINARY_MI2S_RX)
 			clk_val = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
 		else
 #endif
 		clk_val = (mi2s_rx_sample_rate * mi2s_rx_bits_per_sample * 2);
+	}
 
 	pr_debug("%s: MI2S Rx bit clock value: 0x%0x\n", __func__, clk_val);
 	return clk_val;
@@ -1484,6 +1485,10 @@ static int msm8x16_quin_mi2s_clk_int_codec_mux(void)
 
 int msm8x16_quin_mi2s_clk_ctl(bool enable)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct msm_asoc_mach_data *pdata =
+			snd_soc_card_get_drvdata(card);
 	int ret = 0;
 
 	if (enable) {
@@ -1505,9 +1510,12 @@ int msm8x16_quin_mi2s_clk_ctl(bool enable)
 			return ret;
 		}
 
-		ret = msm_gpioset_activate(CLIENT_WCD_INT, "quin_i2s");
-		if (ret < 0)
-			pr_err("failed to enable codec gpios\n");
+		if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_active_state(
+				pdata->mi2s_gpio_p[QUIN_MI2S]);
+			if (ret < 0)
+				pr_err("failed to enable codec gpios\n");
+		}
 
 		msm8x16_quin_mi2s_clocks(enable);
 	} else {
@@ -1524,10 +1532,13 @@ int msm8x16_quin_mi2s_clk_ctl(bool enable)
 			return ret;
 		}
 
-		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "quin_i2s");
-		if (ret < 0)
-			pr_err("%s: gpio set cannot be de-activated %sd",
-					__func__, "quin_i2s");
+		if (pdata->mi2s_gpio_p[QUIN_MI2S]) {
+			ret =  msm_cdc_pinctrl_select_sleep_state(
+				pdata->mi2s_gpio_p[QUIN_MI2S]);
+			if (ret < 0)
+				pr_err("%s: gpio set cannot be de-activated %sd",
+						__func__, "quin_i2s");
+		}
 	}
 	return ret;
 }
