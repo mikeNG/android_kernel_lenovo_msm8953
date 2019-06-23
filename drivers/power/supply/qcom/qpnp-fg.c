@@ -3362,7 +3362,7 @@ static void battery_heatbeat_work(struct work_struct *work)
 	if ((soc!=pre_soc) || (batt_temp != pre_batt_temp)) {
 		pre_soc = soc;
 		pre_batt_temp = batt_temp;
-		power_supply_changed(&chip->bms_psy);
+		power_supply_changed(chip->bms_psy);
 	}
 
 	schedule_delayed_work(&chip->battery_heatbeat_work, (HZ * 5));
