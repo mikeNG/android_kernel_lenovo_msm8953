@@ -691,9 +691,6 @@ static struct synaptics_rmi4_packet_reg f54_query_reg_array[] = {
 #define QUERY_TYPE	(2 << 8)
 #define COMMAND_TYPE	(3 << 8)
 
-#ifdef CONFIG_TOUCHSCREEN_PROPERTY
-extern void property_init(void);
-#endif
 // @wakeup_gesture: control wake up gesture function
 static atomic_t wakeup_gesture;
 // @glove_ctrl: control glove function
@@ -7229,9 +7226,6 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 	}
 	mutex_unlock(&exp_fn_ctrl_mutex);
 
-#ifdef CONFIG_TOUCHSCREEN_PROPERTY
-	property_init();
-#endif
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		retval = sysfs_create_file(&rmi4_data->i2c_client->dev.kobj,
 				&attrs[attr_count].attr);
