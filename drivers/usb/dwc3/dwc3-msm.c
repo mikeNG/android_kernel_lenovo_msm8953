@@ -221,8 +221,6 @@ struct dwc3_msm {
 	unsigned int		max_power;
 	bool			charging_disabled;
 	enum usb_otg_state	otg_state;
-	int			pmic_id_irq;
-	int			usb_id_gpio;
 	u32			bus_perf_client;
 	struct msm_bus_scale_pdata	*bus_scale_table;
 	struct power_supply	*usb_psy;
@@ -2825,27 +2823,6 @@ static irqreturn_t msm_dwc3_pwr_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
-{
-	struct dwc3_msm *mdwc = data;
-	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
-	enum dwc3_id_state id;
-
-	/* If we can't read ID line state for some reason, treat it as float */
-	if (gpio_is_valid(mdwc->usb_id_gpio))
-		id = gpio_get_value(mdwc->usb_id_gpio);
-	else
-		id = DWC3_ID_FLOAT;
-	if (mdwc->id_state != id) {
-		mdwc->id_state = id;
-		dbg_event(0xFF, "stayIDIRQ", 0);
-		pm_stay_awake(mdwc->dev);
-		queue_delayed_work(mdwc->dwc3_resume_wq, &mdwc->resume_work, 0);
-	}
-
-	return IRQ_HANDLED;
-}
-
 static int dwc3_cpu_notifier_cb(struct notifier_block *nfb,
 		unsigned long action, void *hcpu)
 {
@@ -3366,37 +3343,6 @@ static ssize_t xhci_link_compliance_store(struct device *dev,
 
 static DEVICE_ATTR_RW(xhci_link_compliance);
 
-static int dwc3_usbid_enable_gpio_pull(struct dwc3_msm *dwc3, int enable)
-{
-	int err = 0;
-	/* pin ctl */
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *gpio_state;
-
-	if (!dwc3 || !dwc3->usb_id_gpio)
-		return 0;
-
-	pinctrl = devm_pinctrl_get(dwc3->dev);
-	if (IS_ERR_OR_NULL(pinctrl)) {
-		pr_err("%s:Getting pinctrl handle failed \r\n", __func__);
-		return -EINVAL;
-	}
-
-	if (enable)
-		gpio_state = pinctrl_lookup_state(pinctrl, "usbid_default");
-	else
-		gpio_state = pinctrl_lookup_state(pinctrl, "usbid_sleep");
-
-	if (pinctrl && gpio_state) {
-		err = pinctrl_select_state(pinctrl, gpio_state);
-		if (err) {
-			pr_err("pinctrl usb id state, err=%d\n",  err);
-			return -EINVAL;
-		}
-	}
-	return 1;
-}
-
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -3488,37 +3434,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 						mdwc->wakeup_irq[i].name, ret);
 				goto err;
 			}
-		}
-	}
-
-	mdwc->usb_id_gpio =
-			of_get_named_gpio(node, "qcom,usbid-gpio", 0);
-
-	if (gpio_is_valid(mdwc->usb_id_gpio)) {
-		dwc3_usbid_enable_gpio_pull(mdwc, 1);
-
-		/* usb_id_gpio request */
-		ret = gpio_request(mdwc->usb_id_gpio, "USB_ID_GPIO");
-		if (ret < 0) {
-			pr_err("%s: gpio req failed for id\n", __func__);
-			goto err;
-		}
-		/* usb_id_gpio to irq */
-		mdwc->pmic_id_irq = gpio_to_irq(mdwc->usb_id_gpio);
-	}
-
-	if (mdwc->pmic_id_irq > 0) {
-		irq_set_status_flags(mdwc->pmic_id_irq, IRQ_NOAUTOEN);
-		ret = devm_request_irq(&pdev->dev,
-				       mdwc->pmic_id_irq,
-				       dwc3_pmic_id_irq,
-				       IRQF_TRIGGER_RISING |
-				       IRQF_TRIGGER_FALLING,
-				       "dwc3_msm_pmic_id",
-				       mdwc);
-		if (ret) {
-			dev_err(&pdev->dev, "irqreq IDINT failed\n");
-			goto err;
 		}
 	}
 
@@ -3729,20 +3644,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	if (of_property_read_bool(node, "qcom,disable-dev-mode-pm"))
 		pm_runtime_get_noresume(mdwc->dev);
 
-	/* Update initial ID state */
-	if (mdwc->pmic_id_irq) {
-		enable_irq(mdwc->pmic_id_irq);
-		local_irq_save(flags);
-		if (gpio_is_valid(mdwc->usb_id_gpio))
-			mdwc->id_state = gpio_get_value(mdwc->usb_id_gpio);
-		else
-			mdwc->id_state = DWC3_ID_FLOAT;
-		if (mdwc->id_state == DWC3_ID_GROUND)
-			dwc3_ext_event_notify(mdwc);
-		local_irq_restore(flags);
-		enable_irq_wake(mdwc->pmic_id_irq);
-	}
-
 	ret = of_property_read_u32(node, "qcom,pm-qos-latency",
 				&mdwc->pm_qos_latency);
 	if (ret) {
@@ -3911,9 +3812,6 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 			arm_iommu_detach_device(mdwc->dev);
 		arm_iommu_release_mapping(mdwc->iommu_map);
 	}
-
-	if (gpio_is_valid(mdwc->usb_id_gpio))
-		gpio_free(mdwc->usb_id_gpio);
 
 	return 0;
 }
